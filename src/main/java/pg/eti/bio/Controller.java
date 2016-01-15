@@ -3,6 +3,7 @@ package pg.eti.bio;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
@@ -27,6 +28,7 @@ import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.CornerRadii;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.scene.layout.VBoxBuilder;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
@@ -42,6 +44,7 @@ import org.biojava.nbio.alignment.SimpleSubstitutionMatrix;
 import org.biojava.nbio.alignment.SubstitutionMatrixHelper;
 import org.biojava.nbio.alignment.template.AlignedSequence;
 import org.biojava.nbio.alignment.template.GapPenalty;
+import org.biojava.nbio.alignment.template.Profile;
 import org.biojava.nbio.alignment.template.SequencePair;
 import org.biojava.nbio.alignment.template.SubstitutionMatrix;
 import org.biojava.nbio.core.exceptions.CompoundNotFoundException;
@@ -50,10 +53,15 @@ import org.biojava.nbio.core.sequence.ProteinSequence;
 import org.biojava.nbio.core.sequence.RNASequence;
 import org.biojava.nbio.core.sequence.compound.AmbiguityDNACompoundSet;
 import org.biojava.nbio.core.sequence.compound.AmbiguityRNACompoundSet;
+import org.biojava.nbio.core.sequence.compound.AminoAcidCompound;
 import org.biojava.nbio.core.sequence.compound.AminoAcidCompoundSet;
 import org.biojava.nbio.core.sequence.compound.DNACompoundSet;
 import org.biojava.nbio.core.sequence.compound.RNACompoundSet;
 import org.biojava.nbio.core.sequence.template.CompoundSet;
+import org.biojava.nbio.core.util.ConcurrencyTools;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import pg.eti.bio.data.SampleData;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -66,29 +74,27 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.ResourceBundle;
+import java.util.stream.Collectors;
 
 import static javafx.scene.text.Font.font;
 
 public class Controller implements Initializable {
 
+    private static final Logger log = LoggerFactory.getLogger(Controller.class);
     private static final ObservableList<String> typeItems = FXCollections.observableArrayList("DNA", "RNA", "Protein", "RNA (Protein)");
     private static final ObservableList<String> matrixItems = FXCollections.observableArrayList("nuc4_4", "blosum62", "pam250", "gonnet250", "JOND920103");
     private static final String GAP = "-"; // should be the same as in SimpleAlignedSequence.gap
 
     @FXML
-    private HBox global1Box;
+    private VBox inputVisualVBox;
     @FXML
-    private HBox global2Box;
+    private VBox outputVisualVBox;
     @FXML
     private Label globalLengthLabel;
     @FXML
     private Label globalDistanceLabel;
     @FXML
     private Label globalSimilarityLabel;
-    @FXML
-    private HBox local1Box;
-    @FXML
-    private HBox local2Box;
     @FXML
     private Label localLengthLabel;
     @FXML
@@ -98,15 +104,9 @@ public class Controller implements Initializable {
     @FXML
     private Button seq1LoadButton;
     @FXML
-    private Button seq2LoadButton;
-    @FXML
     private TextArea seq1TextArea;
     @FXML
-    private TextArea seq2TextArea;
-    @FXML
     private Label seq1LengthLabel;
-    @FXML
-    private Label seq2LengthLabel;
     @FXML
     private TextField openPenaltyField;
     @FXML
@@ -130,15 +130,10 @@ public class Controller implements Initializable {
     private StringProperty matrix;
     private StringProperty type;
     private StringProperty seq1Length;
-    private StringProperty seq2Length;
     private StringProperty seq1;
-    private StringProperty seq2;
     private StringProperty localLength;
     private StringProperty localDistance;
     private StringProperty localSimilarity;
-    private StringProperty globalLength;
-    private StringProperty globalDistance;
-    private StringProperty globalSimilarity;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -150,15 +145,10 @@ public class Controller implements Initializable {
         matrix = new SimpleStringProperty();
         type = new SimpleStringProperty();
         seq1Length = new SimpleStringProperty();
-        seq2Length = new SimpleStringProperty();
         seq1 = new SimpleStringProperty();
-        seq2 = new SimpleStringProperty();
         localLength = new SimpleStringProperty();
         localDistance = new SimpleStringProperty();
         localSimilarity = new SimpleStringProperty();
-        globalLength = new SimpleStringProperty();
-        globalDistance = new SimpleStringProperty();
-        globalSimilarity = new SimpleStringProperty();
 
         openPenaltyField.textProperty().bindBidirectional(openPenalty, new NumberStringConverter());
         extendPenaltyField.textProperty().bindBidirectional(extendPenalty, new NumberStringConverter());
@@ -178,25 +168,25 @@ public class Controller implements Initializable {
         });
         type.setValue(typeItems.get(0));
         seq1LengthLabel.textProperty().bindBidirectional(seq1Length);
-        seq2LengthLabel.textProperty().bindBidirectional(seq2Length);
         seq1TextArea.textProperty().bindBidirectional(seq1);
-        seq2TextArea.textProperty().bindBidirectional(seq2);
         localLengthLabel.textProperty().bindBidirectional(localLength);
         localDistanceLabel.textProperty().bindBidirectional(localDistance);
         localSimilarityLabel.textProperty().bindBidirectional(localSimilarity);
-        globalLengthLabel.textProperty().bindBidirectional(globalLength);
-        globalDistanceLabel.textProperty().bindBidirectional(globalDistance);
-        globalSimilarityLabel.textProperty().bindBidirectional(globalSimilarity);
+
         seq1.addListener((observable, oldValue, newValue) -> seq1Length.setValue("Length: " + newValue.length()));
-        seq2.addListener((observable, oldValue, newValue) -> seq2Length.setValue("Length: " + newValue.length()));
 
         seq1.setValue("");
-        seq2.setValue("");
         seq1Length.setValue("Length: 0");
-        seq2Length.setValue("Length: 0");
 
         substCostProperty.setValue(1);
         indelCostProperty.setValue(2);
+
+        //DEBUG
+        SampleData samples = new SampleData();
+
+        // simple multi alignment
+        String input = samples.getAll();
+        seq1.setValue(input);
     }
 
     public void onLoadButtonClicked(ActionEvent event) throws IOException {
@@ -215,120 +205,69 @@ public class Controller implements Initializable {
 
             if (seq1LoadButton.equals(event.getSource())) {
                 seq1.setValue(text);
-            } else if (seq2LoadButton.equals(event.getSource())) {
-                seq2.setValue(text);
             }
         }
     }
 
+    //look at http://www.biojava.org/docs/api/org/biojava/nbio/alignment/package-summary.html
     public void onComputeButtonClicked(ActionEvent event) throws CompoundNotFoundException, FileNotFoundException {
-        SubstitutionMatrix mat ;
-        CompoundSet compoundSet;
-        if (type.get().equals(typeItems.get(2)) || type.get().equals(typeItems.get(3))) {
-            compoundSet = new AminoAcidCompoundSet();
-        } else if (type.get().equals(typeItems.get(1))) {
-            compoundSet = new RNACompoundSet();
-        } else {
-            compoundSet = new DNACompoundSet();
-        }
-        if ("".equals(matrixFile.get())) {
-            File file = new File(matrixFile.get());
-            mat = new SimpleSubstitutionMatrix(compoundSet, file);
-        } else if (matrix.get().equals(matrixItems.get(0))) {
-            mat = SubstitutionMatrixHelper.getNuc4_4();
-        } else {
-            mat = SubstitutionMatrixHelper.getAminoAcidSubstitutionMatrix(matrix.get());
-        }
-        GapPenalty localGapPenalty = new SimpleGapPenalty(openPenalty.get(), extendPenalty.get());
-        GapPenalty globalGapPenalty = new SimpleGapPenalty(openPenalty.get(), extendPenalty.get());
-        if (localGapPenalty.getOpenPenalty() == 0) {
-            localGapPenalty.setOpenPenalty(1);
-        }
-        SequencePair spl = null;
-        SequencePair spg = null;
-        String queryLocalSeq = null;
-        String targetLocalSeq = null;
-        String queryGlobalSeq = null;
-        String targetGlobalSeq = null;
-        String s1 = seq1.get().replaceAll("\\s","");
-        String s2 = seq2.get().replaceAll("\\s","");
-        if (type.get().equals(typeItems.get(0))) {
-            spl = computeDNAAlignment(s1, s2, Alignments.PairwiseSequenceAlignerType.LOCAL, localGapPenalty, mat);
-            spg = computeDNAAlignment(s1, s2, Alignments.PairwiseSequenceAlignerType.GLOBAL, globalGapPenalty, mat);
-        } else if (type.get().equals(typeItems.get(1))) {
-            spl = computeRNAAlignment(s1, s2, Alignments.PairwiseSequenceAlignerType.LOCAL, localGapPenalty, mat);
-            spg = computeRNAAlignment(s1, s2, Alignments.PairwiseSequenceAlignerType.GLOBAL, globalGapPenalty, mat);
-        } else if (type.get().equals(typeItems.get(2))) {
-            spl = computeProteinAlignment(s1, s2, Alignments.PairwiseSequenceAlignerType.LOCAL, localGapPenalty, mat);
-            spg = computeProteinAlignment(s1, s2, Alignments.PairwiseSequenceAlignerType.GLOBAL, globalGapPenalty, mat);
-        } else {
-            //@todo
+        try {
+            String input = seq1.get();
+            List<String> chains = Lists.newArrayList(Splitter.on("\n").split(input))
+                    .stream()
+                    .filter(s -> !s.equals(""))
+                    .collect(Collectors.toList());
+            List<ProteinSequence> proteinSeqs = chains.stream()
+                    .map(s -> {
+                        try {
+                            return new ProteinSequence(s);
+                        } catch (CompoundNotFoundException e) {
+                            log.warn("Unrecognized protein in chain");
+                            return null;
+                        }
+                    })
+                    .collect(Collectors.toList());
+
+            Profile<ProteinSequence, AminoAcidCompound> profile = Alignments.getMultipleSequenceAlignment(proteinSeqs);
+            final List<AlignedSequence<ProteinSequence, AminoAcidCompound>> alignedSequences = profile.getAlignedSequences();
+
+            List<String> outputChains = alignedSequences.stream()
+                    .map(s -> s.toString())
+                    .collect(Collectors.toList());
+            fillResult(chains, outputChains, inputVisualVBox, outputVisualVBox);
+        } catch (Exception e) {
+            log.warn("Something went wrong");
         }
 
-        if (spl != null && spg != null) {
-            queryLocalSeq = spl.getQuery().getSequenceAsString();
-            targetLocalSeq = spl.getTarget().getSequenceAsString();
-            queryGlobalSeq = spg.getQuery().getSequenceAsString();
-            targetGlobalSeq = spg.getTarget().getSequenceAsString();
-        }
-
-        fillResult(queryLocalSeq, targetLocalSeq, localLength, localDistance, localSimilarity, local1Box, local2Box);
-        fillResult(queryGlobalSeq, targetGlobalSeq, globalLength, globalDistance, globalSimilarity, global1Box, global2Box);
     }
 
-    private void fillResult(String splq, String splt, StringProperty length, StringProperty dist, StringProperty simil, HBox box1, HBox box2) {
-        int len = splq.length();
-        int similarity = 0;
-        int editDistance = 0;
-        int substitutionCost = getSubstitutionCost();
-        int indelCost = getIndelCost();
+    private void fillBox(String seq, HBox box) {
+        Color color = Color.WHITE;
+        Label label = new Label(seq);
+        label.setFont(font("Monospace"));
+        label.setBackground(new Background(new BackgroundFill(color, CornerRadii.EMPTY, Insets.EMPTY)));
+        box.getChildren().add(label);
+    }
 
-        length.setValue("Length: " + len);
+    private void fillResult(List<String> inputs, List<String> outputs, VBox inputsBox, VBox outputsBox) {
+        inputsBox.getChildren().clear();
+        outputsBox.getChildren().clear();
 
-        box1.getChildren().clear();
-        box2.getChildren().clear();
-        for (int i = 0; i < len; i++) {
-            Color color = Color.YELLOW;
-            Label l1 = new Label(String.valueOf(splq.charAt(i)));
-            Label l2 = new Label(String.valueOf(splt.charAt(i)));
-            l1.setFont(font("Monospaced"));
-            l2.setFont(font("Monospaced"));
-            if (splq.charAt(i) == splt.charAt(i)) {
-                color = Color.GREEN;
-                similarity += 1;
-            } else if (splq.charAt(i) == GAP.charAt(0) || splt.charAt(i) == GAP.charAt(0)) {
-                color = Color.RED;
-                editDistance += indelCost;
-            } else {
-                editDistance += substitutionCost;
-            }
-
-            l1.setBackground(new Background(new BackgroundFill(color, CornerRadii.EMPTY, Insets.EMPTY)));
-            l2.setBackground(new Background(new BackgroundFill(color, CornerRadii.EMPTY, Insets.EMPTY)));
-            box1.getChildren().add(l1);
-            box2.getChildren().add(l2);
+        if (inputs.size() != outputs.size()) {
+            log.warn("The number of inputs doesn't equal the number of outputs");
+            return;
         }
+        final int rows = inputs.size();
 
-        dist.setValue("Edit distance: " + editDistance);
-        simil.setValue("Similarity: " + similarity);
-    }
+        for (int i = 0; i < rows; ++i) {
+            HBox box1 = new HBox();
+            fillBox(inputs.get(i), box1);
+            inputsBox.getChildren().add(box1);
 
-    private SequencePair computeProteinAlignment(String s1, String s2, Alignments.PairwiseSequenceAlignerType t, GapPenalty gapPenalty, SubstitutionMatrix mat) throws CompoundNotFoundException {
-        ProteinSequence query = new ProteinSequence(s1, AminoAcidCompoundSet.getAminoAcidCompoundSet());
-        ProteinSequence target = new ProteinSequence(s2, AminoAcidCompoundSet.getAminoAcidCompoundSet());
-        return Alignments.getPairwiseAlignment(query, target, t, gapPenalty, mat);
-    }
-
-    private SequencePair computeRNAAlignment(String s1, String s2, Alignments.PairwiseSequenceAlignerType t, GapPenalty gapPenalty, SubstitutionMatrix mat) throws CompoundNotFoundException {
-        RNASequence query = new RNASequence(s1, AmbiguityRNACompoundSet.getRNACompoundSet());
-        RNASequence target = new RNASequence(s2, AmbiguityRNACompoundSet.getRNACompoundSet());
-        return Alignments.getPairwiseAlignment(query, target, t, gapPenalty, mat);
-    }
-
-    private SequencePair computeDNAAlignment(String s1, String s2, Alignments.PairwiseSequenceAlignerType t, GapPenalty penalty, SubstitutionMatrix subMatrix) throws CompoundNotFoundException {
-        DNASequence query = new DNASequence(s1, AmbiguityDNACompoundSet.getDNACompoundSet());
-        DNASequence target = new DNASequence(s2, AmbiguityDNACompoundSet.getDNACompoundSet());
-        return Alignments.getPairwiseAlignment(query, target, t, penalty, subMatrix);
+            HBox box2 = new HBox();
+            fillBox(outputs.get(i), box2);
+            outputsBox.getChildren().add(box2);
+        }
     }
 
     private int getSubstitutionCost() {
