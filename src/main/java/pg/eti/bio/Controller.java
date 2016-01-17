@@ -28,12 +28,14 @@ import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 import javafx.util.converter.NumberStringConverter;
 import org.biojava.nbio.alignment.Alignments;
+import org.biojava.nbio.alignment.GuideTree;
 import org.biojava.nbio.alignment.SimpleGapPenalty;
 import org.biojava.nbio.alignment.SimpleProfile;
 import org.biojava.nbio.alignment.SimpleSubstitutionMatrix;
 import org.biojava.nbio.alignment.SubstitutionMatrixHelper;
 import org.biojava.nbio.alignment.template.AlignedSequence;
 import org.biojava.nbio.alignment.template.GapPenalty;
+import org.biojava.nbio.alignment.template.PairwiseSequenceScorer;
 import org.biojava.nbio.alignment.template.Profile;
 import org.biojava.nbio.alignment.template.SubstitutionMatrix;
 import org.biojava.nbio.core.exceptions.CompoundNotFoundException;
@@ -75,13 +77,19 @@ public class Controller implements Initializable {
     @FXML
     private Label profileMatrix2Label;
     @FXML
+    private Label profileMatrixLabel;
+    @FXML
     private VBox input1VisualVBox;
     @FXML
     private VBox output1VisualVBox;
     @FXML
+    private VBox outputVisualVBox;
+    @FXML
     private VBox input2VisualVBox;
     @FXML
     private VBox output2VisualVBox;
+    @FXML
+    private Button computeButton;
     @FXML
     private Button compute1Button;
     @FXML
@@ -112,6 +120,9 @@ public class Controller implements Initializable {
     private StringProperty type;
     private StringProperty seq1;
     private StringProperty seq2;
+    private StringProperty pm1;
+    private StringProperty pm2;
+    private StringProperty pm;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -122,10 +133,19 @@ public class Controller implements Initializable {
         type = new SimpleStringProperty();
         seq1 = new SimpleStringProperty();
         seq2 = new SimpleStringProperty();
+        pm = new SimpleStringProperty();
+        pm1 = new SimpleStringProperty();
+        pm2 = new SimpleStringProperty();
 
         openPenaltyField.textProperty().bindBidirectional(openPenalty, new NumberStringConverter());
         extendPenaltyField.textProperty().bindBidirectional(extendPenalty, new NumberStringConverter());
         matrixFileField.textProperty().bindBidirectional(matrixFile);
+        profileMatrix1Label.textProperty().bindBidirectional(pm1);
+        profileMatrix2Label.textProperty().bindBidirectional(pm2);
+        profileMatrixLabel.textProperty().bindBidirectional(pm);
+        profileMatrix1Label.setFont(font("Monospace"));
+        profileMatrix2Label.setFont(font("Monospace"));
+        profileMatrixLabel.setFont(font("Monospace"));
         matrixChoiceBox.setItems(matrixItems);
         matrixChoiceBox.valueProperty().bindBidirectional(matrix);
         typeChoiceBox.setItems(typeItems);
@@ -196,6 +216,8 @@ public class Controller implements Initializable {
             input = seq1.get();
         } else if (compute2Button.equals(event.getSource())) {
             input = seq2.get();
+        } else {
+            input = seq1.get() + "\n" + seq2.get();
         }
         List<String> chains = Lists.newArrayList(Splitter.on("\n").split(input))
                 .stream()
@@ -203,29 +225,80 @@ public class Controller implements Initializable {
                 .collect(Collectors.toList());
         List<String> outputChains;
         if (type.get().equals(typeItems.get(0))) {
-            Profile<DNASequence, NucleotideCompound> profile = computeDNAAlignment(chains, gapPenalty, mat);
-            List<AlignedSequence<DNASequence, NucleotideCompound>> alignedSequences = profile.getAlignedSequences();
-            outputChains = alignedSequences.stream().map(Object::toString).collect(Collectors.toList());
-            if (compute1Button.equals(event.getSource())) {
-                fillResult(chains, outputChains, input1VisualVBox, output1VisualVBox);
-                fillDNAProfileMatrix(profileMatrix1Label, profile);
-            } else if (compute2Button.equals(event.getSource())) {
-                fillResult(chains, outputChains, input2VisualVBox, output2VisualVBox);
-                fillDNAProfileMatrix(profileMatrix2Label, profile);
-
+            if (computeButton.equals(event.getSource())) {
+                SimpleProfile<DNASequence, NucleotideCompound> profile = computeProgressiveDNAAlignment(chains, gapPenalty, mat);
+                List<AlignedSequence<DNASequence, NucleotideCompound>> alignedSequences = profile.getAlignedSequences();
+                outputChains = alignedSequences.stream().map(Object::toString).collect(Collectors.toList());
+                fillDNAProfileMatrix(pm, profile);
+                fillResult(chains, outputChains, null, outputVisualVBox);
+            } else {
+                Profile<DNASequence, NucleotideCompound> profile = computeDNAAlignment(chains, gapPenalty, mat);
+                List<AlignedSequence<DNASequence, NucleotideCompound>> alignedSequences = profile.getAlignedSequences();
+                outputChains = alignedSequences.stream().map(Object::toString).collect(Collectors.toList());
+                if (compute1Button.equals(event.getSource())) {
+                    fillResult(chains, outputChains, input1VisualVBox, output1VisualVBox);
+                    fillDNAProfileMatrix(pm1, profile);
+                } else if (compute2Button.equals(event.getSource())) {
+                    fillResult(chains, outputChains, input2VisualVBox, output2VisualVBox);
+                    fillDNAProfileMatrix(pm2, profile);
+                }
             }
         } else {
-            SimpleProfile<ProteinSequence, AminoAcidCompound> profile = computeProteinAlignment(chains, gapPenalty, mat);
-            List<AlignedSequence<ProteinSequence, AminoAcidCompound>> alignedSequences = profile.getAlignedSequences();
-            outputChains = alignedSequences.stream().map(Object::toString).collect(Collectors.toList());
-            if (compute1Button.equals(event.getSource())) {
-                fillResult(chains, outputChains, input1VisualVBox, output1VisualVBox);
-                fillProteinProfileMatrix(profileMatrix1Label, profile);
-            } else if (compute2Button.equals(event.getSource())) {
-                fillResult(chains, outputChains, input2VisualVBox, output2VisualVBox);
-                fillProteinProfileMatrix(profileMatrix2Label, profile);
+            if (computeButton.equals(event.getSource())) {
+                SimpleProfile<ProteinSequence, AminoAcidCompound> profile = computeProgressiveProteinAlignment(chains, gapPenalty, mat);
+                List<AlignedSequence<ProteinSequence, AminoAcidCompound>> alignedSequences = profile.getAlignedSequences();
+                outputChains = alignedSequences.stream().map(Object::toString).collect(Collectors.toList());
+                fillProteinProfileMatrix(pm, profile);
+                fillResult(chains, outputChains, null, outputVisualVBox);
+            } else {
+                SimpleProfile<ProteinSequence, AminoAcidCompound> profile = computeProteinAlignment(chains, gapPenalty, mat);
+                List<AlignedSequence<ProteinSequence, AminoAcidCompound>> alignedSequences = profile.getAlignedSequences();
+                outputChains = alignedSequences.stream().map(Object::toString).collect(Collectors.toList());
+                if (compute1Button.equals(event.getSource())) {
+                    fillResult(chains, outputChains, input1VisualVBox, output1VisualVBox);
+                    fillProteinProfileMatrix(pm1, profile);
+                } else if (compute2Button.equals(event.getSource())) {
+                    fillResult(chains, outputChains, input2VisualVBox, output2VisualVBox);
+                    fillProteinProfileMatrix(pm2, profile);
+                }
             }
         }
+    }
+
+    private SimpleProfile<ProteinSequence, AminoAcidCompound> computeProgressiveProteinAlignment(List<String> chains, GapPenalty gapPenalty, SubstitutionMatrix mat) {
+        List<ProteinSequence> sequences = chains.stream()
+                .map(s -> {
+                    try {
+                        return new ProteinSequence(s);
+                    } catch (CompoundNotFoundException e) {
+                        log.warn("Unrecognized nucleotide in chain");
+                        return null;
+                    }
+                })
+                .collect(Collectors.toList());
+        List<PairwiseSequenceScorer<ProteinSequence, AminoAcidCompound>> scorers = Alignments.getAllPairsScorers(sequences, Alignments.PairwiseSequenceScorerType.GLOBAL_IDENTITIES, gapPenalty, mat);
+        Alignments.runPairwiseScorers(scorers);
+        GuideTree<ProteinSequence, AminoAcidCompound> tree = new GuideTree<>(sequences, scorers);
+        SimpleProfile<ProteinSequence, AminoAcidCompound> profile = (SimpleProfile<ProteinSequence, AminoAcidCompound>) Alignments.getProgressiveAlignment(tree, Alignments.ProfileProfileAlignerType.GLOBAL, gapPenalty, mat);
+        return profile;
+    }
+
+    private SimpleProfile<DNASequence, NucleotideCompound> computeProgressiveDNAAlignment(List<String> chains, GapPenalty gapPenalty, SubstitutionMatrix subMatrix) {
+        List<DNASequence> sequences = chains.stream()
+                .map(s -> {
+                    try {
+                        return new DNASequence(s, AmbiguityDNACompoundSet.getDNACompoundSet());
+                    } catch (CompoundNotFoundException e) {
+                        log.warn("Unrecognized nucleotide in chain");
+                        return null;
+                    }
+                })
+                .collect(Collectors.toList());
+        List<PairwiseSequenceScorer<DNASequence, NucleotideCompound>> scorers = Alignments.getAllPairsScorers(sequences, Alignments.PairwiseSequenceScorerType.GLOBAL_IDENTITIES, gapPenalty, subMatrix);
+        Alignments.runPairwiseScorers(scorers);
+        GuideTree<DNASequence, NucleotideCompound> tree = new GuideTree<>(sequences, scorers);
+        SimpleProfile<DNASequence, NucleotideCompound> profile = (SimpleProfile<DNASequence, NucleotideCompound>) Alignments.getProgressiveAlignment(tree, Alignments.ProfileProfileAlignerType.GLOBAL, gapPenalty, subMatrix);
+        return profile;
     }
 
     private SimpleProfile<DNASequence, NucleotideCompound> computeDNAAlignment(List<String> chains, GapPenalty gapPenalty, SubstitutionMatrix mat) {
@@ -260,7 +333,7 @@ public class Controller implements Initializable {
         return profile;
     }
 
-    private void fillProteinProfileMatrix(Label matrixLabel, SimpleProfile<ProteinSequence, AminoAcidCompound> profile) {
+    private void fillProteinProfileMatrix(StringProperty matrixLabel, SimpleProfile<ProteinSequence, AminoAcidCompound> profile) {
         List<String> result = new ArrayList<>(profile.getSize() + 1);
         result.add("\t");
         profile.getCompoundSet().getAllCompounds().stream().forEach(c -> result.add(c.getShortName() + "\t"));
@@ -276,11 +349,10 @@ public class Controller implements Initializable {
                 result.set(j + 1, String.format("%s %-6s", result.get(j + 1), String.format("%.2f", doubles.get(j))));
             }
         });
-        matrixLabel.setText(StringUtils.join(result, "\n"));
-        matrixLabel.setFont(font("Monospace"));
+        matrixLabel.setValue(StringUtils.join(result, "\n"));
     }
 
-    private void fillDNAProfileMatrix(Label matrixLabel, Profile<DNASequence, NucleotideCompound> profile) {
+    private void fillDNAProfileMatrix(StringProperty matrixLabel, Profile<DNASequence, NucleotideCompound> profile) {
         List<String> result = new ArrayList<>(profile.getSize() + 1);
         result.add("\t");
         profile.getCompoundSet().getAllCompounds().stream().forEach(c -> result.add(c.getShortName() + "\t"));
@@ -296,8 +368,7 @@ public class Controller implements Initializable {
                 result.set(j + 1, String.format("%s %-6s", result.get(j + 1), String.format("%.2f", doubles.get(j))));
             }
         });
-        matrixLabel.setText(StringUtils.join(result, "\n"));
-        matrixLabel.setFont(font("Monospace"));
+        matrixLabel.setValue(StringUtils.join(result, "\n"));
     }
 
     private void fillBox(String seq, HBox box) {
@@ -309,7 +380,9 @@ public class Controller implements Initializable {
     }
 
     private void fillResult(List<String> inputs, List<String> outputs, VBox inputsBox, VBox outputsBox) {
-        inputsBox.getChildren().clear();
+        if (inputsBox != null) {
+            inputsBox.getChildren().clear();
+        }
         outputsBox.getChildren().clear();
 
         if (inputs.size() != outputs.size()) {
@@ -319,9 +392,11 @@ public class Controller implements Initializable {
         final int rows = inputs.size();
 
         for (int i = 0; i < rows; ++i) {
-            HBox box1 = new HBox();
-            fillBox(inputs.get(i), box1);
-            inputsBox.getChildren().add(box1);
+            if (inputsBox != null) {
+                HBox box1 = new HBox();
+                fillBox(inputs.get(i), box1);
+                inputsBox.getChildren().add(box1);
+            }
 
             HBox box2 = new HBox();
             fillBox(outputs.get(i), box2);
