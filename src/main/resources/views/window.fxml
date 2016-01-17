@@ -59,6 +59,7 @@
             <RowConstraints minHeight="10.0" prefHeight="80.0" vgrow="SOMETIMES" />
             <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
             <RowConstraints minHeight="10.0" prefHeight="80.0" vgrow="SOMETIMES" />
+            <RowConstraints minHeight="10.0" prefHeight="100.0" vgrow="SOMETIMES" />
             <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
         </rowConstraints>
          <children>
@@ -80,7 +81,7 @@
                   <VBox fx:id="output1VisualVBox" />
                </content>
             </ScrollPane>
-            <Button fx:id="compute1Button" mnemonicParsing="false" onAction="#onComputeButtonClicked" text="Compute" GridPane.rowIndex="7">
+            <Button fx:id="compute1Button" mnemonicParsing="false" onAction="#onComputeButtonClicked" text="Compute" GridPane.rowIndex="8">
                <GridPane.margin>
                   <Insets />
                </GridPane.margin></Button>
@@ -98,9 +99,19 @@
                   <VBox fx:id="output2VisualVBox" />
                </content>
             </ScrollPane>
-            <Button fx:id="compute2Button" mnemonicParsing="false" onAction="#onComputeButtonClicked" text="Compute" GridPane.columnIndex="1" GridPane.rowIndex="7" />
+            <Button fx:id="compute2Button" mnemonicParsing="false" onAction="#onComputeButtonClicked" text="Compute" GridPane.columnIndex="1" GridPane.rowIndex="8" />
             <Button fx:id="seq1LoadButton" mnemonicParsing="false" onAction="#onLoadButtonClicked" text="Load" GridPane.rowIndex="2" />
             <Button fx:id="seq2LoadButton" mnemonicParsing="false" onAction="#onLoadButtonClicked" text="Load" GridPane.columnIndex="1" GridPane.rowIndex="2" />
+            <ScrollPane GridPane.rowIndex="7">
+               <content>
+                  <Label fx:id="profileMatrix1Label" />
+               </content>
+            </ScrollPane>
+            <ScrollPane prefHeight="200.0" prefWidth="200.0" GridPane.columnIndex="1" GridPane.rowIndex="7">
+               <content>
+                  <Label fx:id="profileMatrix2Label" />
+               </content>
+            </ScrollPane>
          </children>
          <VBox.margin>
             <Insets bottom="10.0" left="20.0" right="20.0" top="10.0" />
